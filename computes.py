@@ -2,11 +2,11 @@ import streamlit as st
 st.set_page_config(layout="wide")
 import numpy as np
 import matplotlib.pyplot as plt
-from datetime import datetime
+
 from scipy.stats import norm
-import plotly.express as px
+
 import seaborn as sns
-from matplotlib.gridspec import GridSpec
+
 
 ### App functions ######################################################
 def BlackScholes(r, S, K, T, sigma, tipo = 'C') : 
