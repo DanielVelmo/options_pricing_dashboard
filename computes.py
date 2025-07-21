@@ -164,23 +164,23 @@ with tab3 :
     #### Creating the simulations
     
     @st.cache_data
-    def simulate(NS, days_to_maturity, s) : 
+    def simulate(NS, days_to_maturity, s, volatility, Risk_Free_Rate) : 
         dt = (days_to_maturity / 365) /s
         Z = np.random.normal(0, np.sqrt(dt), (s, NS) )
         paths =  np.vstack([np.ones(NS), np.exp((Risk_Free_Rate - 0.5 * volatility**2 ) * dt + volatility * Z)]).cumprod(axis = 0)
         
         return paths 
     
-    simulation_paths = Underlying_price * simulate(NS, days_to_maturity, step)
+    simulation_paths = Underlying_price * simulate(NS, days_to_maturity, step, volatility, Risk_Free_Rate)
 
     def get_Option_Price(K,St, type = 'Call'):
+        dynamic_index = -int(step - timeshot * 365 * (step/days_to_maturity) + 1)
         expiration_price = 0
-        
         try: 
             if type == 'Call' : 
-                expiration_price =np.max(np.vstack([St[-int(step - timeshot * step + 1), :] - K, np.zeros(St.shape[1])]), axis = 0)
+                expiration_price =np.max(np.vstack([St[dynamic_index, :] - K, np.zeros(St.shape[1])]), axis = 0)
             elif type == 'Put' : 
-                expiration_price =np.max( np.vstack([K - St[-int(step - timeshot * step + 1), :], np.zeros(St.shape[1])]), axis = 0)
+                expiration_price =np.max( np.vstack([K - St[dynamic_index, :], np.zeros(St.shape[1])]), axis = 0)
         except : 
             print('Error')
         return expiration_price
