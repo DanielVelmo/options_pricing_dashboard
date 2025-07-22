@@ -1,6 +1,7 @@
-matplotlib
 numpy
-seaborn
-scipy
 streamlit
+matplotlib
+scipy
+seaborn
+numba
 plotly
