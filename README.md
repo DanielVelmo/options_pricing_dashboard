@@ -33,7 +33,7 @@ An end-to-end solution for autonomous options trading on Binance Options API—f
   - Request new tickers & manage your watchlist  
   - Interactive Options Chain table with P&L probability  
   - Heatmaps: fair value & expected P&L surfaces  
-  - Monte Carlo simulations for price & P&L distributions  
+  - Simulations for price & P&L distributions  
 
 - **Extensible Model Engine**  
   - Batch Black-Scholes processing  
