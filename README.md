@@ -62,12 +62,12 @@ flowchart TB
   CM --> SB1[Supabase Realtime]
   CM --> AB1[AblyRealtime]
 
-  style DBM fill:#D1E8E2,stroke:#333,stroke-width:2px
-  style BOP fill:#D1E8E2,stroke:#333,stroke-width:2px
-  style ME fill:#D1E8E2,stroke:#333,stroke-width:2px
-  style CM fill:#D1E8E2,stroke:#333,stroke-width:2px
-  style SB1 fill:#B2DFDB,stroke:#333,stroke-width:1px
-  style AB1 fill:#FFCDD2,stroke:#333,stroke-width:1px
+  style DBM fill:#1F78B4,stroke:#333,stroke-width:2px
+  style BOP fill:#1F78B4,stroke:#333,stroke-width:2px
+  style ME fill:#1F78B4,stroke:#333,stroke-width:2px
+  style CM fill:#1F78B4,stroke:#333,stroke-width:2px
+  style SB1 fill:#33A02C,stroke:#333,stroke-width:1px
+  style AB1 fill:#FF7F00,stroke:#333,stroke-width:1px
 ```
 
 ### Dashboard Workflow
@@ -86,11 +86,11 @@ flowchart TB
   DC --> SB2[Supabase Realtime]
   DC --> AB2[AblyRealtime]
 
-  style AM  fill:#FBB1BD,stroke:#333,stroke-width:2px
-  style DC  fill:#FBB1BD,stroke:#333,stroke-width:2px
-  style UI  fill:#FBB1BD,stroke:#333,stroke-width:2px
-  style SB2 fill:#B2DFDB,stroke:#333,stroke-width:1px
-  style AB2 fill:#FFCDD2,stroke:#333,stroke-width:1px
+  style AM  fill:#E31A1C,stroke:#333,stroke-width:2px
+  style DC  fill:#E31A1C,stroke:#333,stroke-width:2px
+  style UI  fill:#E31A1C,stroke:#333,stroke-width:2px
+  style SB2 fill:#33A02C,stroke:#333,stroke-width:1px
+  style AB2 fill:#FF7F00,stroke:#333,stroke-width:1px
 ```
 
 ---
