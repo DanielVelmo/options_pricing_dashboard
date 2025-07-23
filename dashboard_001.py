@@ -940,10 +940,10 @@ def show_options_analysis():
 
 
 def show_black_scholes_heatmap():
-    """Show Black-Scholes heatmap analysis (from original code)"""
-    st.header("🔥 Black-Scholes Options Heatmap")
+    """Show Black-Scholes heatmap analysis """
+    st.header("🔥 Black-Scholes Options")
 
-    # Sidebar parameters (preserved from original code)
+    # Sidebar parameters 
     with st.sidebar:
         st.header("Option Parameters")
         Underlying_price = st.number_input("Spot Price", value=100)
@@ -1365,7 +1365,7 @@ def main():
         [
             "🏠 Home",
             "📈 Options Analysis",
-            "🔥 Black-Scholes Heatmap",
+            "🔥 Black-Scholes",
             "🔑 API Keys Setup",
             "⚙️ Preferences",
         ],
@@ -1407,11 +1407,11 @@ def main():
             st.subheader("🚀 Quick Actions")
             if st.button("📊 View Options Analysis", use_container_width=True):
                 st.session_state["nav_page"] = "📈 Options Analysis"
-                st.rerun()
+                
 
             if st.button("🔥 Open Heatmap", use_container_width=True):
-                st.session_state["nav_page"] = "🔥 Black-Scholes Heatmap"
-                st.rerun()
+                st.session_state["nav_page"] = "🔥 Black-Scholes"
+                
 
         # Recent activity
         if symbols:
@@ -1452,6 +1452,7 @@ def main():
     st.sidebar.markdown("- Configure API keys for live data")
     st.sidebar.markdown("- Enable real-time updates in preferences")
     st.sidebar.markdown("- Add symbols to your watchlist")
+
 
 
 if __name__ == "__main__":
