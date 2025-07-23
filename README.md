@@ -77,7 +77,7 @@ flowchart TB
   subgraph DashboardComponents [Dashboard Components]
     direction LR
     AM[(AuthManager)]
-    DC[(DashboardCommunicator)]
+    DC[(Dashboard)]
     UI[(Streamlit UI)]
   end
 
