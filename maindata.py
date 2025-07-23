@@ -63,11 +63,11 @@ class OptionData:
     expiry: datetime
     option_type: str  # 'C' or 'P'
     price: float
+    timestamp: datetime  
     bid: Optional[float] = None
     ask: Optional[float] = None
     volume: Optional[float] = None
     implied_volatility: Optional[float] = None
-    timestamp: datetime
     source: str = "binance"
 
 @dataclass
@@ -847,10 +847,10 @@ async def main():
     
     # Load configuration from environment variables
     config = PublisherConfig(
-        supabase_url=os.getenv('SUPABASE_URL', 'https://your-project.supabase.co'),
-        supabase_key=os.getenv('SUPABASE_ANON_KEY', 'your-anon-key'),
-        supabase_service_key=os.getenv('SUPABASE_SERVICE_KEY', 'your-service-key'),
-        ably_api_key=os.getenv('ABLY_API_KEY'),  # Optional
+        supabase_url=('https://pcfqzrzelgvutthbijzg.supabase.co'),
+        supabase_key=('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjZnF6cnplbGd2dXR0aGJpanpnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI2MDY4ODYsImV4cCI6MjA2ODE4Mjg4Nn0.zVUs0K7vNIUvwxJCesUsVhjpZn5vTm0VrCoiuVCo07k'),
+        supabase_service_key=('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjZnF6cnplbGd2dXR0aGJpanpnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MjYwNjg4NiwiZXhwIjoyMDY4MTgyODg2fQ._84Caw717UmbLHScCLUc3LvQdXHUv5inyJnKusT2zyE'),
+        ably_api_key=('ABLY_API_KEY'),  # Optional
         log_level=os.getenv('LOG_LEVEL', 'INFO'),
         update_interval=float(os.getenv('UPDATE_INTERVAL', '1.0')),
         request_check_interval=float(os.getenv('REQUEST_CHECK_INTERVAL', '5.0')),
