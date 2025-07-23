@@ -188,7 +188,7 @@ C = S\,\Phi(d_1) - K e^{-rT}\,\Phi(d_2),
 P = K e^{-rT}\,\Phi(-d_2) - S\,\Phi(-d_1),
 $$
 
-where  
+where:  
 $$\(S\)$$=spot price, $$\(K\)$$=strike, $$\(r\)$$=risk-free rate,  
 $$\(\sigma\)$$=volatility, $$\(T\)$$=time to expiry, $$\(\Phi\)$$=CDF of the standard normal.
 
