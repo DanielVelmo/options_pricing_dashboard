@@ -113,7 +113,7 @@ flowchart TB
 
 1. **Clone the repo**  
    ```bash
-   git clone https://github.com/your_username/options_trading_dashboard.git
+   git clone https://github.com/DanielVelmo/options_trading_dashboard.git
    cd options_trading_dashboard
    ```
 
