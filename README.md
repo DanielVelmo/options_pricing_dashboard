@@ -190,7 +190,9 @@ $$
 
 where:  
 $$
-S = \text{Spot price}, \quad K = \text{Strike}, \quad r = \text{Risk Free Rate} , \quad \sigma = \text{Volatility} \linebreak
+S = \text{Spot price}, \quad K = \text{Strike}, \quad r = \text{Risk Free Rate} , \quad \sigma = \text{Volatility} 
+$$
+$$
 T  = \text{time to expiry}, \quad \Phi = \text{CDF of the standard normal distribution}
 $$ 
 
