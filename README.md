@@ -1,6 +1,6 @@
 # 📈 Autonomous Options Trading Dashboard & Publisher
 
-[![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](#license) [![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-blue.svg)]() [![Streamlit](https://img.shields.io/badge/Streamlit-%3E%3D0.75-blue.svg)]() [![Supabase](https://img.shields.io/badge/Supabase-Firestore-blue.svg)]() [![Ably](https://img.shields.io/badge/Ably-Realtime-blue.svg)]()
+[![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](#license) [![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-blue.svg)]() [![Streamlit](https://img.shields.io/badge/Streamlit-%3E%3D0.75-blue.svg)]() [![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-blue.svg)]() [![Ably](https://img.shields.io/badge/Ably-Realtime-blue.svg)]()
 
 An end-to-end solution for autonomous options trading on Binance Options API—fetching live option chains, computing theoretical prices (Black-Scholes & beyond), storing & broadcasting data in real time, and visualizing insights through a rich Streamlit dashboard.
 
@@ -22,15 +22,15 @@ An end-to-end solution for autonomous options trading on Binance Options API—f
 ## 🚀 Features
 
 - **Data Publisher**  
-  - Periodically polls user requests from Supabase  
+  - Polls user requests from Supabase  
   - Fetches live option chains via Binance Options API  
   - Calculates theoretical option prices (Black-Scholes)  
   - Stores market, options, and model data in Supabase  
-  - Broadcasts updates in real time via Supabase Realtime & Ably  
+  - Broadcasts real-time updates via Supabase Realtime & Ably  
 
 - **Streamlit Dashboard**  
   - Secure Supabase-powered authentication  
-  - Request new tickers & view/update your watchlist  
+  - Request new tickers & manage your watchlist  
   - Interactive Options Chain table with P&L probability  
   - Heatmaps: fair value & expected P&L surfaces  
   - Monte Carlo simulations for price & P&L distributions  
@@ -43,56 +43,55 @@ An end-to-end solution for autonomous options trading on Binance Options API—f
 ---
 
 ## 🖥️ Architecture
-Below is a color-coded architecture diagram. Two main subsystems—Publisher and Dashboard—interact via real-time channels.
+
+### Publisher Workflow
+
 ```mermaid
-graph LR
-flowchart LR
-  subgraph Publisher 🏭
+flowchart TB
+  subgraph PublisherComponents [Publisher Components]
     direction LR
-    DM([DatabaseManager]) --> BOP([BinanceOptionsProvider])
-    DM --> ME([ModelEngine])
-    BOP --> ME
-    ME --> CM([CommunicationManager])
-    CM --> SR([Supabase Realtime])
-    CM --> AR([Ably Realtime])
+    DBM[(DatabaseManager)]
+    BOP[(BinanceOptionsProvider)]
+    ME[(ModelEngine)]
+    CM[(CommunicationManager)]
   end
 
-  subgraph Dashboard 💻
-    direction LR
-    AM([AuthManager]) --> DC([DashboardCommunicator])
-    UI([Streamlit UI]) --> AM
-    UI --> DC
-    DC --> SR
-    DC --> AR
-  end
+  DBM --> BOP
+  BOP --> ME
+  ME --> CM
+  CM --> SB1[Supabase Realtime]
+  CM --> AB1[AblyRealtime]
 
-  style Publisher fill:#CCFFFF,stroke:#333,stroke-width:2px
-  style Dashboard fill:#FFCCFF,stroke:#333,stroke-width:2px
-  style DM fill:#99FF99,stroke:#333
-  style BOP fill:#66CCFF,stroke:#333
-  style ME fill:#FF9966,stroke:#333
-  style CM fill:#FFCC66,stroke:#333
-  style AM fill:#66FF99,stroke:#333
-  style DC fill:#FFCC99,stroke:#333
-  style UI fill:#CCCCFF,stroke:#333
-  style SR fill:#EEEEFF,stroke:#333
-  style AR fill:#FFEEEE,stroke:#333
+  style DBM fill:#D1E8E2,stroke:#333,stroke-width:2px
+  style BOP fill:#D1E8E2,stroke:#333,stroke-width:2px
+  style ME fill:#D1E8E2,stroke:#333,stroke-width:2px
+  style CM fill:#D1E8E2,stroke:#333,stroke-width:2px
+  style SB1 fill:#B2DFDB,stroke:#333,stroke-width:1px
+  style AB1 fill:#FFCDD2,stroke:#333,stroke-width:1px
 ```
 
-1. **DatabaseManager** (maindata.py) interacts with Supabase tables:  
-   - `data_requests`, `options_data`, `market_data`, `model_results`, `user_api_keys`, `user_preferences`.
+### Dashboard Workflow
 
-2. **BinanceOptionsProvider**  
-   - Authenticates & fetches option symbols & prices from Binance’s eAPI.
+```mermaid
+flowchart TB
+  subgraph DashboardComponents [Dashboard Components]
+    direction LR
+    AM[(AuthManager)]
+    DC[(DashboardCommunicator)]
+    UI[(Streamlit UI)]
+  end
 
-3. **ModelEngine**  
-   - Runs Black-Scholes batch calculations (and future models).
+  AM --> DC
+  UI --> DC
+  DC --> SB2[Supabase Realtime]
+  DC --> AB2[AblyRealtime]
 
-4. **CommunicationManager**  
-   - Writes real-time broadcasts to Supabase & publishes via Ably.
-
-5. **Streamlit Frontend** (dashboard_001.py)  
-   - Manages login/signup, API key setup, preferences, data requests, and live charts.
+  style AM  fill:#FBB1BD,stroke:#333,stroke-width:2px
+  style DC  fill:#FBB1BD,stroke:#333,stroke-width:2px
+  style UI  fill:#FBB1BD,stroke:#333,stroke-width:2px
+  style SB2 fill:#B2DFDB,stroke:#333,stroke-width:1px
+  style AB2 fill:#FFCDD2,stroke:#333,stroke-width:1px
+```
 
 ---
 
@@ -156,7 +155,7 @@ flowchart LR
 python maindata.py
 ```
 It will:
-- Poll new requests every 5s  
+- Poll new requests every 5 s  
 - Fetch & store options data  
 - Compute & store model results  
 - Broadcast updates
@@ -178,13 +177,13 @@ streamlit run dashboard_001.py
 The Black-Scholes call price \(C\) and put price \(P\) are given by
 
 $$
-d_1 = \frac{\ln\!\bigl(\tfrac{S}{K}\bigr) + \bigl(r + \tfrac{\sigma^2}{2}\bigr)T}{\sigma\sqrt{T}},
+d_1 = \frac{\ln\!\bigl(\tfrac{S}{K}\bigr) + \bigl(r + \tfrac{\sigma^2}{2}\bigr)T}{\sigma\sqrt{T}}, 
 \quad
 d_2 = d_1 - \sigma\sqrt{T},
 $$
 
 $$
-C = S\,\Phi(d_1) - K e^{-rT}\,\Phi(d_2),
+C = S\,\Phi(d_1) - K e^{-rT}\,\Phi(d_2), 
 \quad
 P = K e^{-rT}\,\Phi(-d_2) - S\,\Phi(-d_1),
 $$
@@ -197,7 +196,7 @@ where
 
 ## 🤝 Contributing
 
-Contributions are welcome!  
+Contributions are welcome!
 
 1. Fork the repo  
 2. Create a feature branch:  
