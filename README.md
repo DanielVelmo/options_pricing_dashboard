@@ -177,7 +177,7 @@ streamlit run dashboard_001.py
 The Black-Scholes call price \(C\) and put price \(P\) are given by
 
 $$
-d_1 = \frac{\ln\!\bigl(\tfrac{S}{K}\bigr) + \bigl(r + \tfrac{\sigma^2}{2}\bigr)T}{\sigma\sqrt{T}}, 
+d_1 = \frac{\ln\bigl(\tfrac{S}{K}\bigr) + \bigl(r + \tfrac{\sigma^2}{2}\bigr)T}{\sigma\sqrt{T}}, 
 \quad
 d_2 = d_1 - \sigma\sqrt{T},
 $$
@@ -190,9 +190,9 @@ $$
 
 where:  
 $$
-S = \text{Spot price}, \quad K = \text{Strike}, \quad r = \text{Risk Free Rate} , \quad \sigma = \text{Volatility}
+S = \text{Spot price}, \quad K = \text{Strike}, \quad r = \text{Risk Free Rate} , \quad \sigma = \text{Volatility} \\ 
+T  = \text{time to expiry}, \quad \Phi = CDF of the standard normal distribution
 $$ 
-\(T\)\(T\)=time to expiry, \(Φ\)\(\Phi\)=CDF of the standard normal.
 
 ---
 
