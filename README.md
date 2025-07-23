@@ -43,28 +43,40 @@ An end-to-end solution for autonomous options trading on Binance Options API—f
 ---
 
 ## 🖥️ Architecture
-
+Below is a color-coded architecture diagram. Two main subsystems—Publisher and Dashboard—interact via real-time channels.
 ```mermaid
 graph LR
-  subgraph Publisher
-    A[DatabaseManager] --> B[BinanceOptionsProvider]
-    A --> C[ModelEngine]
-    B --> C
-    C --> D[CommunicationManager]
-    D --> E[Supabase Realtime]
-    D --> F[AblyRealtime]
+flowchart LR
+  subgraph Publisher 🏭
+    direction LR
+    DM([DatabaseManager]) --> BOP([BinanceOptionsProvider])
+    DM --> ME([ModelEngine])
+    BOP --> ME
+    ME --> CM([CommunicationManager])
+    CM --> SR([Supabase Realtime])
+    CM --> AR([Ably Realtime])
   end
 
-  subgraph Dashboard
-    G[AuthManager] --> H[DashboardCommunicator]
-    H --> E
-    H --> F
-    I[Streamlit UI] --> H
-    I --> G
+  subgraph Dashboard 💻
+    direction LR
+    AM([AuthManager]) --> DC([DashboardCommunicator])
+    UI([Streamlit UI]) --> AM
+    UI --> DC
+    DC --> SR
+    DC --> AR
   end
 
-  style Publisher fill:#f9f,stroke:#333,stroke-width:2px
-  style Dashboard fill:#ff9,stroke:#333,stroke-width:2px
+  style Publisher fill:#CCFFFF,stroke:#333,stroke-width:2px
+  style Dashboard fill:#FFCCFF,stroke:#333,stroke-width:2px
+  style DM fill:#99FF99,stroke:#333
+  style BOP fill:#66CCFF,stroke:#333
+  style ME fill:#FF9966,stroke:#333
+  style CM fill:#FFCC66,stroke:#333
+  style AM fill:#66FF99,stroke:#333
+  style DC fill:#FFCC99,stroke:#333
+  style UI fill:#CCCCFF,stroke:#333
+  style SR fill:#EEEEFF,stroke:#333
+  style AR fill:#FFEEEE,stroke:#333
 ```
 
 1. **DatabaseManager** (maindata.py) interacts with Supabase tables:  
