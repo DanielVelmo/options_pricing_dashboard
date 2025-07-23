@@ -100,7 +100,7 @@ flowchart TB
 ```
 .
 ├── maindata.py         # 🎛️ FinancialDataPublisher (core)
-├── computes.py         # ⚙️ Utility functions & helpers
+├── computes.py         # ⚙️ Previous dashboard version 
 ├── dashboard_001.py    # 🖥️ Streamlit frontend
 ├── requirements.txt    # 📦 Python dependencies
 ├── LICENSE             # 📄 MIT License
