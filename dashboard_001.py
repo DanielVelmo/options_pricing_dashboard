@@ -557,4 +557,902 @@ class PLProbabilityCalculator:
                 + volatility * np.sqrt(dt) * Z
             )
 
-            # Calculate option values at expirat
+            # Calculate option values at expiration
+            if option_type.upper() == "C":
+                option_values = np.maximum(final_prices - strike, 0)
+                breakeven = strike + option_purchase_price + transaction_cost
+            else:  # Put
+                option_values = np.maximum(strike - final_prices, 0)
+                breakeven = strike - option_purchase_price - transaction_cost
+
+            # Calculate P&L
+            pl_values = option_values - option_purchase_price - transaction_cost
+
+            # Calculate statistics
+            positive_pl_count = np.sum(pl_values > 0)
+            positive_pl_probability = positive_pl_count / num_simulations
+            expected_pl = np.mean(pl_values)
+            max_loss = option_purchase_price + transaction_cost
+
+            return {
+                "positive_pl_probability": positive_pl_probability,
+                "breakeven_price": breakeven,
+                "expected_pl": expected_pl,
+                "max_loss": max_loss,
+                "simulated_pl_values": pl_values,
+            }
+
+        except Exception as e:
+            logging.error(
+                f"Error calculating P&L probability: {e}", exc_info=True
+            )
+            st.error(f"Error calculating P&L probability: {e}")
+            return {
+                "positive_pl_probability": 0.0,
+                "breakeven_price": 0.0,
+                "expected_pl": 0.0,
+                "max_loss": 0.0,
+            }
+
+
+# Dashboard Pages
+def show_dashboard_header():
+    """Display dashboard header with user info"""
+    col1, col2, col3 = st.columns([2, 1, 1])
+
+    with col1:
+        st.title("📊 Financial Trading Dashboard")
+
+    with col2:
+        if st.session_state.user_session:
+            st.write(f"Welcome, {st.session_state.user_session.email}")
+
+    with col3:
+        if st.button("🚪 Logout", key="logout_btn"):
+            st.session_state.auth_manager.logout()
+
+
+def show_api_keys_setup():
+    """Show API keys configuration page"""
+    st.header("🔑 API Keys Setup")
+
+    if not st.session_state.user_session:
+        st.error("Please login first")
+        return
+
+    st.write("Configure your API keys for data providers:")
+
+    current_keys = st.session_state.user_session.api_keys
+
+    with st.form("api_keys_form"):
+        st.subheader("Binance API Keys")
+        binance_api_key = st.text_input(
+            "Binance API Key",
+            value=current_keys.get("binance_api_key", ""),
+            type="password",
+        )
+        binance_secret_key = st.text_input(
+            "Binance Secret Key",
+            value=current_keys.get("binance_secret_key", ""),
+            type="password",
+        )
+
+        st.subheader("Alpaca API Keys")
+        alpaca_api_key = st.text_input(
+            "Alpaca API Key",
+            value=current_keys.get("alpaca_api_key", ""),
+            type="password",
+        )
+        alpaca_secret_key = st.text_input(
+            "Alpaca Secret Key",
+            value=current_keys.get("alpaca_secret_key", ""),
+            type="password",
+        )
+
+        st.subheader("Financial Modeling Prep API Key")
+        fmp_api_key = st.text_input(
+            "FMP API Key",
+            value=current_keys.get("fmp_api_key", ""),
+            type="password",
+        )
+
+        if st.form_submit_button("💾 Save API Keys"):
+            api_keys = {
+                "binance_api_key": binance_api_key,
+                "binance_secret_key": binance_secret_key,
+                "alpaca_api_key": alpaca_api_key,
+                "alpaca_secret_key": alpaca_secret_key,
+                "fmp_api_key": fmp_api_key,
+            }
+
+            st.session_state.auth_manager.save_user_api_keys(
+                st.session_state.user_session.user_id, api_keys
+            )
+
+
+def show_options_analysis():
+    """Show options analysis page with P&L probability """
+    st.header("📈 Options Analysis & P&L Probability")
+
+    if not st.session_state.user_session:
+        st.error("Please login first")
+        return
+
+    # Check if user has Binance API keys
+    api_keys = st.session_state.user_session.api_keys
+    has_binance_keys = api_keys.get(
+        "binance_api_key"
+    ) and api_keys.get("binance_secret_key")
+
+    if not has_binance_keys:
+        st.warning(
+            "⚠️ Please configure your Binance API keys in the Settings to access full functionality."
+        )
+
+    # Ticker input
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        ticker_input = st.text_input(
+            "Enter ticker symbol (e.g., BTCUSDT, ETHUSDT):",
+            placeholder="BTCUSDT",
+            key="ticker_input",
+        )
+
+    with col2:
+        if st.button("🔍 Request Data", disabled=not ticker_input):
+            if ticker_input:
+                st.session_state.dashboard_comm.request_ticker_data(
+                    ticker_input.upper()
+                )
+
+    # Show options data if available
+    if ticker_input:
+        logging.info(
+            f"Rendering options analysis for ticker: {ticker_input}"
+        )
+        options_data = st.session_state.dashboard_comm.get_options_data(
+            ticker_input
+        )
+
+        if options_data:
+            st.subheader(f"Options Chain for {ticker_input.upper()}")
+
+            # Convert to DataFrame for better display
+            df = pd.DataFrame(options_data)
+
+            if not df.empty:
+                # Get current underlying price (you might want to fetch this from your market data)
+                underlying_price = st.number_input(
+                    f"Current {ticker_input.upper()} Price:",
+                    value=45000.0,  # Default value
+                    min_value=0.0,
+                    key="underlying_price",
+                )
+
+                # Risk parameters
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    risk_free_rate = st.number_input(
+                        "Risk-free Rate",
+                        value=0.05,
+                        min_value=0.0,
+                        max_value=1.0,
+                        format="%.4f",
+                    )
+                with col2:
+                    default_volatility = st.number_input(
+                        "Default Volatility",
+                        value=0.25,
+                        min_value=0.0,
+                        max_value=5.0,
+                        format="%.4f",
+                    )
+                with col3:
+                    transaction_cost = st.number_input(
+                        "Transaction Cost", value=10.0, min_value=0.0
+                    )
+
+                # Calculate P&L probabilities
+                calculator = PLProbabilityCalculator()
+
+                enhanced_data = []
+                for _, row in df.iterrows():
+                    try:
+                        # Parse expiry date
+                        if "expiry" in row and row["expiry"]:
+                            expiry_date = pd.to_datetime(row["expiry"])
+                            time_to_expiry = (
+                                expiry_date - datetime.now(timezone.utc)
+                            ).days
+                        else:
+                            time_to_expiry = 30  # Default to 30 days
+
+                        # Use implied volatility if available, otherwise default
+                        volatility = (
+                            row.get("implied_volatility", default_volatility)
+                            or default_volatility
+                        )
+
+                        # Calculate theoretical Black-Scholes price
+                        bs_price = BlackScholes(
+                            risk_free_rate,
+                            underlying_price,
+                            row["strike"],
+                            time_to_expiry / 365,
+                            volatility,
+                            row["option_type"],
+                        )
+
+                        # Use market price if available, otherwise BS price
+                        market_price = row.get("price", bs_price) or bs_price
+
+                        # Calculate P&L probability
+                        pl_stats = calculator.calculate_positive_pl_probability(
+                            option_type=row["option_type"],
+                            strike=row["strike"],
+                            current_price=underlying_price,
+                            time_to_expiry=time_to_expiry,
+                            volatility=volatility,
+                            risk_free_rate=risk_free_rate,
+                            option_purchase_price=market_price,
+                            transaction_cost=transaction_cost,
+                        )
+
+                        # Simplified enhanced row with only key metrics
+                        enhanced_row = {
+                            "Symbol": row["symbol"],
+                            "Type": row["option_type"],
+                            "Strike": row["strike"],
+                            "Market Price": market_price,
+                            "BS Price": bs_price,
+                            "Days to Expiry": time_to_expiry,
+                            "Volatility": volatility,
+                            "P&L Probability": pl_stats['positive_pl_probability'],
+                            "Breakeven": pl_stats['breakeven_price'],
+                            "Volume": row.get("volume", 0),
+                            "Bid": row.get("bid", 0),
+                            "Ask": row.get("ask", 0),
+                        }
+                        enhanced_data.append(enhanced_row)
+
+                    except Exception as e:
+                        logging.warning(
+                            f"Error processing option {row.get('symbol', 'unknown')}: {e}",
+                            exc_info=True,
+                        )
+                        st.warning(
+                            f"Error processing option {row.get('symbol', 'unknown')}: {e}"
+                        )
+                        continue
+
+                if enhanced_data:
+                    enhanced_df = pd.DataFrame(enhanced_data)
+
+                    # Display interactive table
+                    st.subheader("📋 Options Analysis Table")
+
+                    # Filter controls
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        option_type_filter = st.selectbox(
+                            "Filter by Type:", ["All", "C", "P"]
+                        )
+                    with col2:
+                        min_probability = st.slider(
+                            "Min P&L Probability:", 0.0, 1.0, 0.0, 0.05
+                        )
+                    with col3:
+                        min_days = st.slider(
+                            "Min Days to Expiry:", 0, 365, 0
+                        )
+
+                    # Apply filters
+                    filtered_df = enhanced_df.copy()
+                    if option_type_filter != "All":
+                        filtered_df = filtered_df[
+                            filtered_df["Type"] == option_type_filter
+                        ]
+
+                    # Filter by probability
+                    filtered_df = filtered_df[
+                        filtered_df["P&L Probability"] >= min_probability
+                    ]
+                    filtered_df = filtered_df[
+                        filtered_df["Days to Expiry"] >= min_days
+                    ]
+
+                    # Create styled dataframe with colors
+                    def style_dataframe(df):
+                        """Apply color styling to highlight best contracts"""
+                        styled_df = df.style
+                        
+                        # Color-code P&L Probability column
+                        styled_df = styled_df.background_gradient(
+                            subset=['P&L Probability'],
+                            cmap='RdYlGn',
+                            vmin=0,
+                            vmax=1
+                        )
+                        
+                        # Format columns
+                        styled_df = styled_df.format({
+                            'Market Price': '${:,.2f}',
+                            'BS Price': '${:,.2f}',
+                            'P&L Probability': '{:.1%}',
+                            'Breakeven': '${:,.2f}',
+                            'Volatility': '{:.1%}',
+                            'Strike': '${:,.2f}',
+                            'Bid': '${:,.2f}',
+                            'Ask': '${:,.2f}'
+                        })
+                        
+                        return styled_df
+
+                    # Display the styled dataframe
+                    if len(filtered_df) > 0:
+                        st.dataframe(
+                            style_dataframe(filtered_df),
+                            use_container_width=True,
+                            height=400,
+                        )
+
+                        # Charts
+                        col1, col2 = st.columns(2)
+
+                        with col1:
+                            st.subheader("P&L Probability by Strike")
+                        
+                            fig_prob = px.bar(
+                                filtered_df,
+                                x="Strike",
+                                y="P&L Probability",
+                                color="Type",
+                                title="Positive P&L Probability by Strike Price",
+                            )
+                            # Use update_layout instead of update_yaxis
+                            fig_prob.update_layout(
+                                yaxis=dict(tickformat=".1%")
+                            )
+                            st.plotly_chart(
+                                fig_prob, use_container_width=True
+                            )
+
+                        with col2:
+                            st.subheader("Contract Volume Distribution")
+                            fig_vol = px.histogram(
+                                filtered_df,
+                                x="Volume",
+                                nbins=20,
+                                title="Volume Distribution",
+                            )
+                            st.plotly_chart(fig_vol, use_container_width=True)
+
+                    else:
+                        st.warning("No contracts match your filter criteria")
+                else:
+                    st.warning("No valid options data to display")
+            else:
+                st.warning("No options data found in the database")
+        else:
+            st.info(
+                f"No options data found for {ticker_input}. Please request data using the button above."
+            )
+
+
+def show_black_scholes_heatmap():
+    """Show Black-Scholes heatmap analysis (from original code)"""
+    st.header("🔥 Black-Scholes Options Heatmap")
+
+    # Sidebar parameters (preserved from original code)
+    with st.sidebar:
+        st.header("Option Parameters")
+        Underlying_price = st.number_input("Spot Price", value=100)
+        trade_type = st.segmented_control(
+            "Contract type", ["Call", "Put"], default="Call"
+        )
+        SelectedStrike = st.number_input("Strike/Exercise Price", value=80)
+        days_to_maturity = st.number_input(
+            "Time to Maturity (days)", value=365
+        )
+        Risk_Free_Rate = st.number_input(
+            "Risk-Free Interest Rate", value=0.1
+        )
+        volatility = st.number_input("Annualized Volatility", value=0.2)
+
+        st.subheader("P&L Parameters")
+        option_purchase_price = st.number_input("Option's Price", value=0.0)
+        transaction_cost = st.number_input(
+            "Opening/Closing Cost", value=0.0
+        )
+
+        st.subheader("Heatmap Parameters")
+        min_spot_price = st.number_input("Min Spot price", value=50)
+        max_spot_price = st.number_input("Max Spot price", value=110)
+        min_vol = st.slider("Min Volatility", 0.01, 1.00, 0.1)
+        max_vol = st.slider("Max Volatility", 0.01, 1.00, 1.00)
+        grid_size = st.slider("Grid size (nxn)", 5, 20, 10)
+
+    # Variables
+    SpotPrices_space = np.linspace(min_spot_price, max_spot_price, grid_size)
+    Volatilities_space = np.linspace(min_vol, max_vol, grid_size)
+
+    # Calculate option prices
+    call_price = BlackScholes(
+        Risk_Free_Rate,
+        Underlying_price,
+        SelectedStrike,
+        days_to_maturity / 365,
+        volatility,
+    )
+    put_price = BlackScholes(
+        Risk_Free_Rate,
+        Underlying_price,
+        SelectedStrike,
+        days_to_maturity / 365,
+        volatility,
+        "P",
+    )
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Call Value", f"${call_price:.3f}")
+    with col2:
+        st.metric("Put Value", f"${put_price:.3f}")
+
+    # Create tabs (preserved from original)
+    tab1, tab2, tab3 = st.tabs(
+        [
+            "Option's Fair Value Heatmap",
+            "Option's P&L Heatmap",
+            "Expected Underlying Distribution",
+        ]
+    )
+
+    # Calculate matrices
+    output_matrix_C = HeatMapMatrix(
+        SpotPrices_space,
+        Volatilities_space,
+        SelectedStrike,
+        Risk_Free_Rate,
+        days_to_maturity,
+    )
+    output_matrix_P = HeatMapMatrix(
+        SpotPrices_space,
+        Volatilities_space,
+        SelectedStrike,
+        Risk_Free_Rate,
+        days_to_maturity,
+        type="P",
+    )
+
+    with tab1:
+        st.write(
+            "Explore different contract's values given variations in Spot Prices and Annualized Volatilities"
+        )
+
+        fig, axs = plt.subplots(2, 1, figsize=(12, 10))
+
+        sns.heatmap(
+            output_matrix_C.T,
+            annot=True,
+            fmt=".1f",
+            xticklabels=[str(round(i, 2)) for i in SpotPrices_space],
+            yticklabels=[str(round(i, 2)) for i in Volatilities_space],
+            ax=axs[0],
+            cbar_kws={"label": "Call Value"},
+        )
+        axs[0].set_title("Call Heatmap", fontsize=16)
+        axs[0].set_xlabel("Spot Price")
+        axs[0].set_ylabel("Annualized Volatility")
+
+        sns.heatmap(
+            output_matrix_P.T,
+            annot=True,
+            fmt=".1f",
+            xticklabels=[str(round(i, 2)) for i in SpotPrices_space],
+            yticklabels=[str(round(i, 2)) for i in Volatilities_space],
+            ax=axs[1],
+            cbar_kws={"label": "Put Value"},
+        )
+        axs[1].set_title("Put Heatmap", fontsize=16)
+        axs[1].set_xlabel("Spot Price")
+        axs[1].set_ylabel("Annualized Volatility")
+
+        st.pyplot(fig)
+
+    with tab2:
+        st.write(
+            "Explore different expected P&L's from a specific contract trade given variations in the Spot Price and Annualized Volatility"
+        )
+
+        fig, axs = plt.subplots(1, 1, figsize=(12, 8))
+
+        call_PL = output_matrix_C.T - option_purchase_price - 2 * transaction_cost
+        put_PL = output_matrix_P.T - option_purchase_price - 2 * transaction_cost
+        PL_options = [call_PL, put_PL]
+        selection = 0 if trade_type == "Call" else 1
+
+        cal_contract_prices = [call_price, put_price]
+        specific_contract_pl = (
+            cal_contract_prices[selection]
+            - option_purchase_price
+            - 2 * transaction_cost
+        )
+
+        st.metric(
+            "Expected P&L (Current Parameters)", f"${specific_contract_pl:.2f}"
+        )
+
+        mapping_color = sns.diverging_palette(15, 145, s=60, as_cmap=True)
+        sns.heatmap(
+            PL_options[selection],
+            annot=True,
+            fmt=".1f",
+            xticklabels=[str(round(i, 2)) for i in SpotPrices_space],
+            yticklabels=[str(round(i, 2)) for i in Volatilities_space],
+            ax=axs,
+            cmap=mapping_color,
+            center=0,
+        )
+        axs.set_title(f"{trade_type} Expected P&L", fontsize=16)
+        axs.set_xlabel("Spot Price")
+        axs.set_ylabel("Annualized Volatility")
+
+        st.pyplot(fig)
+
+    with tab3:
+        st.write(
+            "Calculate the expected distribution of the underlying asset price, option premium and P&L from trading"
+        )
+
+        # Simulation parameters (preserved from original)
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            NS = st.slider("Number of simulations", 100, 10000, 1000, 10)
+        with col2:
+            s_selection = st.radio(
+                "Select time interval", ["Days", "Hours", "Minutes"], horizontal=True
+            )
+        with col3:
+            timeshot = st.slider(
+                "Select chart's timestamp (days/year)",
+                0.0,
+                days_to_maturity / 365,
+                days_to_maturity / 365,
+            )
+
+        # Simulation logic (preserved from original)
+        if s_selection == "Days":
+            step = days_to_maturity
+        elif s_selection == "Hours":
+            step = days_to_maturity * 24
+        elif s_selection == "Minutes":
+            step = days_to_maturity * 24 * 60
+
+        @st.cache_data
+        def simulate(NS, days_to_maturity, s, volatility, Risk_Free_Rate):
+            dt = (days_to_maturity / 365) / s
+            Z = np.random.normal(0, np.sqrt(dt), (s, NS))
+            paths = np.vstack(
+                [
+                    np.ones(NS),
+                    np.exp(
+                        (Risk_Free_Rate - 0.5 * volatility**2) * dt
+                        + volatility * Z
+                    ),
+                ]
+            ).cumprod(axis=0)
+            return paths
+
+        simulation_paths = Underlying_price * simulate(
+            NS, days_to_maturity, step, volatility, Risk_Free_Rate
+        )
+
+        # Display results (preserved from original logic)
+        dynamic_index = -int(
+            step - timeshot * 365 * (step / days_to_maturity) + 1
+        )
+
+        if trade_type == "Call":
+            option_prices = np.maximum(
+                simulation_paths[dynamic_index, :] - SelectedStrike, 0
+            )
+        else:
+            option_prices = np.maximum(
+                SelectedStrike - simulation_paths[dynamic_index, :], 0
+            )
+
+        pl_results = (
+            option_prices - option_purchase_price - 2 * transaction_cost
+        )
+
+        otm_probability = round(sum(option_prices == 0) / len(option_prices), 2)
+        itm_probability = round(1 - otm_probability, 2)
+        positive_pl_proba = round(sum(pl_results > 0) / len(pl_results), 2)
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("ITM Probability", f"{itm_probability:.1%}")
+        col2.metric("OTM Probability", f"{otm_probability:.1%}")
+        col3.metric("Positive P&L Probability", f"{positive_pl_proba:.1%}")
+
+        # Charts
+        col1, col2 = st.columns(2)
+        with col1:
+            fig_price = px.histogram(
+                simulation_paths[dynamic_index, :],
+                nbins=50,
+                title=f"Expected Price Distribution at Day {int(timeshot * 365)}",
+            )
+            fig_price.add_vline(
+                x=SelectedStrike, line_color="red", annotation_text="Strike Price"
+            )
+            st.plotly_chart(fig_price, use_container_width=True)
+
+        with col2:
+            fig_pl = px.histogram(
+                pl_results,
+                nbins=50,
+                title=f"Expected P&L Distribution at Day {int(timeshot * 365)}",
+            )
+            fig_pl.add_vline(
+                x=0, line_color="red", annotation_text="Breakeven"
+            )
+            st.plotly_chart(fig_pl, use_container_width=True)
+
+
+def show_user_preferences():
+    """Show user preferences and settings"""
+    st.header("⚙️ User Preferences")
+
+    if not st.session_state.user_session:
+        st.error("Please login first")
+        return
+
+    preferences = st.session_state.user_session.preferences
+
+    with st.form("preferences_form"):
+        st.subheader("Trading Preferences")
+
+        # Default risk parameters
+        risk_free_rate = st.number_input(
+            "Default Risk-Free Rate",
+            value=preferences.get("risk_free_rate", 0.05),
+            min_value=0.0,
+            max_value=1.0,
+            format="%.4f",
+        )
+
+        default_volatility = st.number_input(
+            "Default Volatility",
+            value=preferences.get("default_volatility", 0.25),
+            min_value=0.0,
+            max_value=5.0,
+            format="%.4f",
+        )
+
+        # Real-time data preferences
+        real_time_enabled = st.checkbox(
+            "Enable Real-Time Data Updates",
+            value=preferences.get("real_time_enabled", False),
+        )
+
+        # Watchlist symbols
+        st.subheader("Watchlist")
+        current_symbols = preferences.get("symbols", [])
+        symbols_text = st.text_area(
+            "Symbols (one per line)",
+            value="\n".join(current_symbols),
+            help="Enter ticker symbols you want to monitor, one per line",
+        )
+
+        # Model preferences
+        st.subheader("Model Preferences")
+        available_models = ["black_scholes", "monte_carlo", "neural_network"]
+        selected_models = st.multiselect(
+            "Enabled Models",
+            available_models,
+            default=preferences.get("models", ["black_scholes"]),
+        )
+
+        if st.form_submit_button("💾 Save Preferences"):
+            symbols_list = [
+                s.strip().upper() for s in symbols_text.split("\n") if s.strip()
+            ]
+
+            updated_preferences = {
+                "risk_free_rate": risk_free_rate,
+                "default_volatility": default_volatility,
+                "real_time_enabled": real_time_enabled,
+                "symbols": symbols_list,
+                "models": selected_models,
+            }
+
+            st.session_state.auth_manager.save_user_preferences(
+                st.session_state.user_session.user_id, updated_preferences
+            )
+
+
+# Real-time data fragment - SIMPLIFIED TO AVOID EVENT LOOP ISSUES
+@st.fragment(run_every=10.0)  # Update every 10 seconds to reduce load
+def real_time_data_fragment():
+    """Fragment for real-time data updates - Simplified to avoid event loop issues"""
+    if not st.session_state.get(
+        "user_session"
+    ) or not st.session_state.user_session.preferences.get(
+        "real_time_enabled", False
+    ):
+        return
+
+    symbols = st.session_state.user_session.preferences.get("symbols", [])
+    if not symbols:
+        return
+
+    logging.info("Real-time fragment updating...")
+    st.subheader("📊 Live Data Feed")
+
+    for symbol in symbols[:3]:  # Limit to first 3 symbols
+        try:
+            # Get latest model results using synchronous calls only
+            model_results = st.session_state.dashboard_comm.get_model_results(
+                symbol
+            )
+
+            if model_results:
+                latest_result = model_results[0]
+                col1, col2, col3 = st.columns(3)
+
+                with col1:
+                    st.metric(
+                        f"{symbol} - Model",
+                        latest_result.get("model_name", "N/A"),
+                    )
+                with col2:
+                    result_value = latest_result.get("result", 0)
+                    try:
+                        formatted_result = f"${float(result_value):.2f}"
+                    except (ValueError, TypeError):
+                        formatted_result = str(result_value)
+                    st.metric("Result", formatted_result)
+                with col3:
+                    timestamp = pd.to_datetime(
+                        latest_result.get("timestamp", datetime.now())
+                    )
+                    st.metric("Last Update", timestamp.strftime("%H:%M:%S"))
+        except Exception as e:
+            logging.warning(
+                f"Error in real-time fragment for {symbol}: {e}",
+                exc_info=True,
+            )
+            # Silently handle errors in real-time updates
+
+
+# Main Application
+def main():
+    """Main application function"""
+    logging.info("Application starting...")
+
+    # Initialize managers
+    if "auth_manager" not in st.session_state:
+        st.session_state.auth_manager = AuthManager()
+
+    if "dashboard_comm" not in st.session_state:
+        st.session_state.dashboard_comm = DashboardCommunicator(
+            st.session_state.auth_manager
+        )
+
+    # Check authentication
+    if (
+        not st.session_state.user_session
+        or not st.session_state.user_session.is_authenticated
+    ):
+        st.session_state.auth_manager.show_auth_page()
+        return
+
+    # Show dashboard header
+    show_dashboard_header()
+
+    # Real-time data fragment (only if enabled)
+    if st.session_state.user_session.preferences.get(
+        "real_time_enabled", False
+    ):
+        real_time_data_fragment()
+
+    # Navigation
+    st.sidebar.title("📱 Navigation")
+
+    page = st.sidebar.selectbox(
+        "Choose a page:",
+        [
+            "🏠 Home",
+            "📈 Options Analysis",
+            "🔥 Black-Scholes Heatmap",
+            "🔑 API Keys Setup",
+            "⚙️ Preferences",
+        ],
+    )
+
+    # Show selected page
+    if page == "🏠 Home":
+        st.header("🏠 Welcome to Your Financial Dashboard")
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.subheader("🎯 Quick Stats")
+            symbols = st.session_state.user_session.preferences.get(
+                "symbols", []
+            )
+            st.metric("Watchlist Symbols", len(symbols))
+            st.metric(
+                "Real-time Updates",
+                "On"
+                if st.session_state.user_session.preferences.get(
+                    "real_time_enabled"
+                )
+                else "Off",
+            )
+
+        with col2:
+            st.subheader("🔧 Your Settings")
+            risk_free_rate = st.session_state.user_session.preferences.get(
+                "risk_free_rate", 0.05
+            )
+            st.metric("Risk-Free Rate", f"{risk_free_rate:.2%}")
+            volatility = st.session_state.user_session.preferences.get(
+                "default_volatility", 0.25
+            )
+            st.metric("Default Volatility", f"{volatility:.2%}")
+
+        with col3:
+            st.subheader("🚀 Quick Actions")
+            if st.button("📊 View Options Analysis", use_container_width=True):
+                st.session_state["nav_page"] = "📈 Options Analysis"
+                st.rerun()
+
+            if st.button("🔥 Open Heatmap", use_container_width=True):
+                st.session_state["nav_page"] = "🔥 Black-Scholes Heatmap"
+                st.rerun()
+
+        # Recent activity
+        if symbols:
+            st.subheader("📋 Your Watchlist")
+            for symbol in symbols:
+                with st.expander(f"📈 {symbol}"):
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button(
+                            f"Request {symbol} Data", key=f"req_{symbol}"
+                        ):
+                            st.session_state.dashboard_comm.request_ticker_data(
+                                symbol
+                            )
+                    with col2:
+                        options_count = len(
+                            st.session_state.dashboard_comm.get_options_data(
+                                symbol
+                            )
+                        )
+                        st.write(f"Options available: {options_count}")
+
+    elif page == "📈 Options Analysis":
+        show_options_analysis()
+
+    elif page == "🔥 Black-Scholes Heatmap":
+        show_black_scholes_heatmap()
+
+    elif page == "🔑 API Keys Setup":
+        show_api_keys_setup()
+
+    elif page == "⚙️ Preferences":
+        show_user_preferences()
+
+    # Footer
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("💡 **Tips:**")
+    st.sidebar.markdown("- Configure API keys for live data")
+    st.sidebar.markdown("- Enable real-time updates in preferences")
+    st.sidebar.markdown("- Add symbols to your watchlist")
+
+
+if __name__ == "__main__":
+    main()
