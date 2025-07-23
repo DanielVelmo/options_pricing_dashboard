@@ -183,14 +183,14 @@ d_2 = d_1 - \sigma\sqrt{T},
 $$
 
 $$
-C = S\,\Phi(d_1) - K e^{-rT}\,\Phi(d_2), 
+C = S\Phi(d_1) - K e^{-rT}\Phi(d_2), 
 \quad
-P = K e^{-rT}\,\Phi(-d_2) - S\,\Phi(-d_1),
+P = K e^{-rT}\Phi(-d_2) - S\Phi(-d_1),
 $$
 
 where:  
-$$\(S\)$$=spot price, $$\(K\)$$=strike, $$\(r\)$$=risk-free rate,  
-$$\(\sigma\)$$=volatility, $$\(T\)$$=time to expiry, $$\(\Phi\)$$=CDF of the standard normal.
+\(S\)\(S\)=spot price, \(K\)\(K\)=strike, \(r\)\(r\)=risk-free rate,  
+\(σ\)\(\sigma\)=volatility, \(T\)\(T\)=time to expiry, \(Φ\)\(\Phi\)=CDF of the standard normal.
 
 ---
 
