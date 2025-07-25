@@ -21,6 +21,7 @@ import logging
 from dataclasses import dataclass
 
 # External libraries
+import supabase 
 from supabase import create_client, Client
 from st_supabase_connection import SupabaseConnection
 
