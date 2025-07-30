@@ -8,6 +8,35 @@ from scipy.stats import norm
 import seaborn as sns
 
 
+def delete_columns_with_zeros(matrix):
+    """
+    Deletes columns from a NumPy matrix that contain at least one zero.
+
+    Args:
+        matrix (np.ndarray): The input NumPy matrix.
+
+    Returns:
+        np.ndarray: A new NumPy matrix with columns containing zeros deleted.
+                    Returns an empty array if all columns contain zeros.
+    """
+    if not isinstance(matrix, np.ndarray):
+        print("Error: Input must be a NumPy array.")
+        return np.array([])
+
+    if matrix.size == 0:
+        print("Input matrix is empty.")
+        return np.array([])
+
+    # Find columns that contain at least one zero
+    # np.any(matrix == 0, axis=0) returns a boolean array
+    # where True indicates a column has at least one zero.
+    columns_to_keep = np.all(matrix != 0, axis=0)
+
+    # Use boolean indexing to select only the columns that do not contain zeros
+    new_matrix = matrix[:, columns_to_keep]
+
+    return new_matrix
+
 ### App functions ######################################################
 def BlackScholes(r, S, K, T, sigma, tipo = 'C') : 
     ''' 
@@ -41,8 +70,9 @@ def HeatMapMatrix(Spot_Prices, Volatilities, Strike, Interest_Rate, Days_to_Exp,
 st.sidebar.header('Option Parameters')
 Underlying_price = st.sidebar.number_input('Spot Price', value = 100)
 trade_type = st.sidebar.segmented_control("Contract type", ['Call', 'Put'], default= 'Call')
-SelectedStrike = st.sidebar.number_input('Strike/Exercise Price', value = 80)
+SelectedStrike = st.sidebar.number_input('Strike/Exercise Price', value = 80.0)
 days_to_maturity = st.sidebar.number_input('Time to Maturity (days)', value = 365)
+relative_maturity_time = days_to_maturity / 365
 Risk_Free_Rate = st.sidebar.number_input('Risk-Free Interest Rate ', value = 0.1)
 volatility = st.sidebar.number_input('Annualized Volatility', value = 0.2)
 st.sidebar.subheader('P&L Parameters')
@@ -126,8 +156,15 @@ with tab2 :
         selection = 1
 
     specific_contrac_pl = cal_contract_prices[selection] - option_purchase_price - 2 * transaction_cost
-    st.markdown(f':green-badge[Expected P&L given selected parameters: **{round(specific_contrac_pl,2)}**]')
+
+    relative_specific_contrac_pl =  specific_contrac_pl / (option_purchase_price + 2 * transaction_cost)
+    
+    t2_col1, t2_col2 = st.columns(2)
+    t2_col1.metric(f"**Expected P&L:**", round(specific_contrac_pl,2), border = True)
+    t2_col2.metric(f"**Expected relative P&L:**", f'{round(relative_specific_contrac_pl *100 ,2)}%', border = True)
+
     maping_color = sns.diverging_palette(15, 145, s=60, as_cmap=True)
+
     sns.heatmap(PL_options[selection], annot=True, fmt='.1f' ,
                                 xticklabels=[str(round(i, 2)) for i in SpotPrices_space], 
                                 yticklabels= [str(round(i, 2)) for i in Volatilities_space], ax=axs, 
@@ -178,7 +215,7 @@ with tab3 :
         expiration_price = 0
         try: 
             if type == 'Call' : 
-                expiration_price =np.max(np.vstack([St[dynamic_index, :] - K, np.zeros(St.shape[1])]), axis = 0)
+                expiration_price =np.max(np.vstack([ St[dynamic_index, :] - K, np.zeros(St.shape[1])]), axis = 0)
             elif type == 'Put' : 
                 expiration_price =np.max( np.vstack([K - St[dynamic_index, :], np.zeros(St.shape[1])]), axis = 0)
         except : 
@@ -186,7 +223,8 @@ with tab3 :
         return expiration_price
 
     option_prices = get_Option_Price(SelectedStrike, simulation_paths, trade_type )
-    pl_results = option_prices - option_purchase_price - 2 *transaction_cost
+    pl_results = option_prices - option_purchase_price + 2 * transaction_cost
+    relative_pl_results = pl_results / (option_purchase_price + 2 *transaction_cost)
 
     otm_probability = round(sum(option_prices == 0) / len(option_prices), 2)
     itm_probability = round(1 - otm_probability, 2)
@@ -203,9 +241,11 @@ with tab3 :
 
     t33_col1, t33_col2 = st.columns(2)
     with t33_col1 : 
-
+        price_distribution =simulation_paths[ - int(step - timeshot * step + 1), :] 
+        ## transformación logarimica para checar distribuciones (ocpiona)
+        ###log_transform = np.log(price_distribution)
         t3_fig1 = plt.figure(figsize=(8, 8))
-        sns.histplot(simulation_paths[ - int(step - timeshot * step + 1), :], kde = True, stat= 'probability')
+        sns.histplot(price_distribution, kde = True, stat= 'probability')
         plt.xlabel('Price')
         plt.axvline(SelectedStrike, 0,1, color = 'r', label = 'Strike price')
         plt.title(f'Expected underlying asset price distribution at day {int(timeshot * 365)}')
@@ -226,8 +266,33 @@ with tab3 :
         sns.histplot(pl_results, kde = True, stat= 'probability')
         plt.xlabel('Price')
 
-        plt.title(f'Expected P&L distribution at day {int(timeshot * 365)}')
+        plt.title(f'Expected relative P&L distribution at day {int(timeshot * 365)}')
         plt.legend()
         st.pyplot(t3_fig3)
+        
+    expiration_price =np.max(np.vstack([simulation_paths - SelectedStrike, np.zeros(simulation_paths.shape[1])]), axis = 0)
     
+    
+
+
+
+    ### Matriz de los resultados de cada simulación
+    call_prices = np.maximum(simulation_paths - SelectedStrike, np.zeros(simulation_paths.shape))
+    p_and_l = call_prices - option_purchase_price
+    relative_pl = p_and_l / option_purchase_price
+    
+    d1 = (np.log(Underlying_price / SelectedStrike) + (Risk_Free_Rate + volatility**2 / 2) * relative_maturity_time) / (volatility * np.sqrt(relative_maturity_time))
+
+    st.write(d1)
+
+    st.write(volatility)
+    st.write(round(norm.cdf(d1, 0, 1),2))
+    st.write(round(norm.cdf(d1 - (volatility * np.sqrt(relative_maturity_time)), 0, 1),2))
     ####
+
+
+    ##Esperanza del retorno relativo
+    E_r = np.log(Underlying_price) + (Risk_Free_Rate + volatility**2 / 2) * relative_maturity_time - np.log(SelectedStrike + option_purchase_price + 2 * transaction_cost)
+    
+    d1_r =  (-E_r)  / (volatility * np.sqrt(relative_maturity_time))
+    st.write(round(norm.cdf(d1_r, 0, 1),2))
