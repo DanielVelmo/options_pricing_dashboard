@@ -185,7 +185,7 @@ with tab3 :
         st.write('Where $\mu$ is the risk free rate, $\sigma$ the annualized volatility of the asset you want to simulate and $S(0)$ the asset price at the beginning (spot price)')
     t3_col1, t3_col2, t3_col3 = st.columns(3)
     with t3_col1 : 
-        NS  = st.slider('Number of simulations ($N$)', 100, 10000, 1000, 10)
+        NS  = st.slider('Number of simulations ($N$)', 100, 50000, 1000, 10)
     with t3_col2 :
         s_selection = st.radio('Select time interval', ['Days', 'Hours', 'Minutes'], horizontal= True, help= 'The time inerval each price point will represent. This option is merely for visual purposes.')
     with t3_col3 : 
@@ -215,21 +215,21 @@ with tab3 :
         expiration_price = 0
         try: 
             if type == 'Call' : 
-                expiration_price =np.max(np.vstack([ St[dynamic_index, :] - K, np.zeros(St.shape[1])]), axis = 0)
-            elif type == 'Put' : 
+                expiration_price =np.max(np.vstack([ St[dynamic_index, :] - (K), np.zeros(St.shape[1])]), axis = 0)
+            elif type == 'Put' :                                                                                          ## va arriba ## , 
                 expiration_price =np.max( np.vstack([K - St[dynamic_index, :], np.zeros(St.shape[1])]), axis = 0)
         except : 
             print('Error')
         return expiration_price
 
     option_prices = get_Option_Price(SelectedStrike, simulation_paths, trade_type )
-    pl_results = option_prices - option_purchase_price + 2 * transaction_cost
+    pl_results = option_prices - (option_purchase_price + 2 * transaction_cost)
     relative_pl_results = pl_results / (option_purchase_price + 2 *transaction_cost)
 
     otm_probability = round(sum(option_prices == 0) / len(option_prices), 2)
     itm_probability = round(1 - otm_probability, 2)
 
-    positive_pl_proba = round(sum(pl_results > 0 ) / len(pl_results), 2)
+    positive_pl_proba = round(sum(pl_results > 0 ) / len(pl_results), 3)
 
     st.subheader('Results')
 
@@ -237,6 +237,12 @@ with tab3 :
     t32_col1.metric("In-the money probability", itm_probability, border = True)
     t32_col2.metric("Out-the money probability", otm_probability,border = True )
     t32_col3.metric("Positive P&L probability", positive_pl_proba,border = True )
+    
+    E_r = np.log(Underlying_price / (SelectedStrike + option_purchase_price + 2 * transaction_cost)) + (Risk_Free_Rate + volatility**2/2) * relative_maturity_time
+    
+    
+    
+    
     #### Plots
 
     t33_col1, t33_col2 = st.columns(2)
@@ -254,6 +260,7 @@ with tab3 :
 
     with t33_col2 : 
     
+       
         t3_fig2 = plt.figure(figsize=(8, 3))
         sns.histplot(option_prices, kde = True, stat= 'probability')
         plt.xlabel('Price')
@@ -262,8 +269,11 @@ with tab3 :
         plt.legend()
         st.pyplot(t3_fig2)
 
+        
+
         t3_fig3 = plt.figure(figsize=(8, 3))
         sns.histplot(pl_results, kde = True, stat= 'probability')
+        
         plt.xlabel('Price')
 
         plt.title(f'Expected relative P&L distribution at day {int(timeshot * 365)}')
@@ -281,18 +291,7 @@ with tab3 :
     p_and_l = call_prices - option_purchase_price
     relative_pl = p_and_l / option_purchase_price
     
-    d1 = (np.log(Underlying_price / SelectedStrike) + (Risk_Free_Rate + volatility**2 / 2) * relative_maturity_time) / (volatility * np.sqrt(relative_maturity_time))
 
-    st.write(d1)
-
-    st.write(volatility)
-    st.write(round(norm.cdf(d1, 0, 1),2))
-    st.write(round(norm.cdf(d1 - (volatility * np.sqrt(relative_maturity_time)), 0, 1),2))
-    ####
-
-
-    ##Esperanza del retorno relativo
-    E_r = np.log(Underlying_price) + (Risk_Free_Rate + volatility**2 / 2) * relative_maturity_time - np.log(SelectedStrike + option_purchase_price + 2 * transaction_cost)
     
-    d1_r =  (-E_r)  / (volatility * np.sqrt(relative_maturity_time))
-    st.write(round(norm.cdf(d1_r, 0, 1),2))
+    positive_pl_proba_teoric = norm.cdf( E_r / (volatility * np.sqrt(relative_maturity_time)) -  (volatility * np.sqrt(relative_maturity_time)) )
+
