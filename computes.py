@@ -294,4 +294,5 @@ with tab3 :
 
     
     positive_pl_proba_teoric = norm.cdf( E_r / (volatility * np.sqrt(relative_maturity_time)) -  (volatility * np.sqrt(relative_maturity_time)) )
+    st.write(positive_pl_proba_teoric)
 
