@@ -13,6 +13,7 @@ from dataclasses import dataclass, asdict
 import numpy as np
 from scipy.stats import norm
 import traceback
+import re
 import requests
 import hashlib
 import hmac
@@ -56,7 +57,7 @@ class MarketData:
 
 @dataclass
 class OptionData:
-    """Options specific data structure"""
+    """Options specific data structure enhanced with greeks and derived metrics from Binance /eapi endpoints"""
     symbol: str
     underlying: str
     strike: float
@@ -69,6 +70,23 @@ class OptionData:
     volume: Optional[float] = None
     implied_volatility: Optional[float] = None
     source: str = "binance"
+    # Fields from /eapi/v1/mark
+    mark_price: Optional[float] = None
+    bid_iv: Optional[float] = None
+    ask_iv: Optional[float] = None
+    mark_iv: Optional[float] = None
+    delta: Optional[float] = None
+    theta: Optional[float] = None
+    gamma: Optional[float] = None
+    vega: Optional[float] = None
+    risk_free_interest: Optional[float] = None
+    # Derived fields per notebook logic
+    exercise_price: Optional[float] = None
+    contract_unit: Optional[int] = None
+    bs_price: Optional[float] = None
+    itm_probability: Optional[float] = None
+    trading_fee: Optional[float] = None
+    success_probability: Optional[float] = None
 
 @dataclass
 class ModelResult:
@@ -94,33 +112,44 @@ class DataRequest:
     timestamp: datetime
 
 # Black-Scholes Model
-def BlackScholes(r: float, S: float, K: float, T: float, sigma: float, tipo: str = 'C') -> float:
-    """
-    Black-Scholes option pricing model
-    r : Interest Rate
-    S : Spot Price
-    K : Strike Price
-    T : Time to expiration in years
-    sigma : Annualized Volatility
-    tipo : 'C' for Call, 'P' for Put
-    """
+def BlackScholes(r: float, S: float, K: float, T: float, sigma: float, tipo: str = 'C') -> Tuple[float, float]:
+    """Notebook-style Black-Scholes returning (price, itm_probability). T in years."""
     try:
         if T <= 0:
-            return max(0, S - K) if tipo == 'C' else max(0, K - S)
-            
-        d1 = (np.log(S/K) + (r + sigma**2/2)*T)/(sigma * np.sqrt(T))
+            precio = max(0, S - K) if tipo == 'C' else max(0, K - S)
+            itm_p = 1.0 if (tipo == 'C' and S > K) or (tipo == 'P' and K > S) else 0.0
+            return float(precio), float(itm_p)
+        d1 = (np.log(S / K) + (r + sigma**2 / 2) * T) / (sigma * np.sqrt(T))
         d2 = d1 - sigma * np.sqrt(T)
-        
         if tipo == 'C':
             precio = S * norm.cdf(d1, 0, 1) - K * np.exp(-r * T) * norm.cdf(d2, 0, 1)
-        elif tipo == 'P':
-            precio = K * np.exp(-r * T) * norm.cdf(-d2, 0, 1) - S * norm.cdf(-d1, 0, 1)
+            itm_p = norm.cdf(d2)
         else:
-            raise ValueError("Option type must be 'C' or 'P'")
-            
-        return max(0, precio)
+            precio = K * np.exp(-r * T) * norm.cdf(-d2, 0, 1) - S * norm.cdf(-d1, 0, 1)
+            itm_p = norm.cdf(-d2)
+        return float(max(0, precio)), float(itm_p)
     except Exception as e:
         logging.error(f"Black-Scholes calculation error: {e}")
+        return 0.0, 0.0
+
+def calculate_trading_fee(exercise_price: float, last_price: float, fee_rate: float, option_size: int, contract_unit: int) -> float:
+    try:
+        transaction_fee = min(fee_rate * exercise_price * contract_unit, last_price * option_size) * option_size
+        return float(transaction_fee)
+    except Exception:
+        return 0.0
+
+def calculate_success_probability(option_type: str, strike: float, exercise_price: float, r: float, sigma: float, T: float, last_price: float, trading_fee: float) -> float:
+    try:
+        trading_cost = last_price + 2 * trading_fee
+        St = exercise_price * np.exp((r + sigma**2 / 2) * T)
+        if option_type == 'C':
+            expected_relative_return = np.log(St / (strike + trading_cost))
+        else:
+            expected_relative_return = np.log(strike / (St + trading_cost))
+        z = expected_relative_return / (sigma * np.sqrt(T)) - (sigma * np.sqrt(T))
+        return float(norm.cdf(z))
+    except Exception:
         return 0.0
 
 # Database Manager
@@ -165,12 +194,13 @@ class DatabaseManager:
     async def mark_request_processed(self, request_id: str):
         """Mark a request as processed"""
         try:
+            # Avoid non-existent 'processed' column; update only safe field
             self.admin_client.table('data_requests')\
-                .update({'processed': True, 'processed_at': datetime.now(timezone.utc).isoformat()})\
+                .update({'processed_at': datetime.now(timezone.utc).isoformat()})\
                 .eq('id', request_id)\
                 .execute()
         except Exception as e:
-            self.logger.error(f"Error marking request as processed: {e}")
+            self.logger.warning(f"Skipping mark_request_processed due to schema mismatch or permissions: {e}")
     
     async def get_user_api_keys(self, user_id: str) -> Dict[str, str]:
         """Retrieve user's API keys from secure storage"""
@@ -227,6 +257,7 @@ class DatabaseManager:
                     'timestamp': option.timestamp.isoformat(),
                     'source': option.source
                 }
+                # Keep storage minimal to avoid schema mismatch errors
                 records.append(record)
             
             # Clear old data for the same underlying first
@@ -359,61 +390,121 @@ class BinanceOptionsProvider:
     async def get_options_chain(self, underlying: str = "BTCUSDT") -> List[OptionData]:
         """Get complete options chain for underlying asset"""
         try:
-            if not await self.connect():
+            # Use eAPI ticker and mark endpoints to enrich and compute notebook metrics
+            _ = await self.connect()
+            ticker_resp = requests.get(f"{self.base_url}/eapi/v1/ticker", timeout=15)
+            mark_resp = requests.get(f"{self.base_url}/eapi/v1/mark", timeout=15)
+            if ticker_resp.status_code != 200 or mark_resp.status_code != 200:
+                self.logger.error(f"Failed to fetch ticker/mark: {ticker_resp.status_code}, {mark_resp.status_code}")
                 return []
-            
-            # Get exchange info to find available options
-            url = f"{self.base_url}/eapi/v1/exchangeInfo"
-            response = requests.get(url, timeout=10)
-            
-            if response.status_code != 200:
-                self.logger.error(f"Failed to get exchange info: {response.status_code}")
-                return []
-            
-            data = response.json()
-            options = []
-            current_time = datetime.now(timezone.utc)
-            
-            # Filter options for the specified underlying
-            option_symbols = []
-            for symbol_info in data.get('optionSymbols', []):
-                if symbol_info.get('underlying') == underlying:
-                    # Only include options that haven't expired
-                    expiry_timestamp = symbol_info.get('expiryDate', 0)
-                    if expiry_timestamp > current_time.timestamp() * 1000:
-                        option_symbols.append(symbol_info)
-            
-            # Limit to first 20 options to avoid rate limits
-            option_symbols = option_symbols[:20]
-            
-            # Get current prices for these options
-            if option_symbols:
-                price_data = await self.get_option_prices([sym['symbol'] for sym in option_symbols])
-                price_dict = {item['symbol']: item for item in price_data}
-                
-                for symbol_info in option_symbols:
-                    symbol = symbol_info['symbol']
-                    price_info = price_dict.get(symbol, {})
-                    
-                    # Determine option type from symbol or side
-                    option_type = 'C' if 'C' in symbol or symbol_info.get('side') == 'CALL' else 'P'
-                    
-                    option = OptionData(
-                        symbol=symbol,
-                        underlying=underlying,
-                        strike=float(symbol_info['strikePrice']),
-                        expiry=datetime.fromtimestamp(symbol_info['expiryDate'] / 1000, tz=timezone.utc),
-                        option_type=option_type,
-                        price=float(price_info.get('price', 0)),
-                        bid=float(price_info.get('bidPrice', 0)) if price_info.get('bidPrice') else None,
-                        ask=float(price_info.get('askPrice', 0)) if price_info.get('askPrice') else None,
-                        volume=float(price_info.get('volume', 0)) if price_info.get('volume') else None,
-                        implied_volatility=None,  # Would need separate API call
-                        timestamp=current_time,
-                        source="binance"
-                    )
-                    options.append(option)
-            
+
+            ticker_data = ticker_resp.json()
+            mark_data = mark_resp.json()
+            mark_by_symbol = {m.get('symbol'): m for m in mark_data}
+
+            options: List[OptionData] = []
+            now_ts = datetime.now(timezone.utc)
+            requested_underlying_symbol = underlying.replace('USDT', '')
+
+            fee_rate = 0.0003
+            option_size = 1
+
+            for t in ticker_data:
+                sym = t.get('symbol')
+                if not sym or '-' not in sym:
+                    continue
+                u_sym = sym.split('-')[0]
+                if u_sym != requested_underlying_symbol:
+                    continue
+
+                try:
+                    last_price = float(t.get('lastPrice', 0))
+                    bid_price = float(t.get('bidPrice', 0)) if t.get('bidPrice') is not None else None
+                    ask_price = float(t.get('askPrice', 0)) if t.get('askPrice') is not None else None
+                    volume = float(t.get('volume', 0)) if t.get('volume') is not None else None
+                    strike_price = float(t.get('strikePrice', 0))
+                    exercise_price = float(t.get('exercisePrice', 0))
+                    contract_type = (t.get('contractType') or sym[-1]).upper()
+                except Exception:
+                    continue
+
+                try:
+                    exp_str = '20' + sym.split('-')[1]
+                    expiry_dt = datetime.strptime(exp_str, '%Y%m%d').replace(tzinfo=timezone.utc)
+                except Exception:
+                    continue
+
+                days_to_exp = (expiry_dt - datetime.now(timezone.utc)).days
+                if days_to_exp <= 0:
+                    continue
+                T = days_to_exp / 365.0
+
+                md = mark_by_symbol.get(sym, {})
+                mark_price = float(md.get('markPrice', 0)) if md.get('markPrice') is not None else None
+                mark_iv = float(md.get('markIV', 0)) if md.get('markIV') is not None else None
+                bid_iv = float(md.get('bidIV', 0)) if md.get('bidIV') is not None else None
+                ask_iv = float(md.get('askIV', 0)) if md.get('askIV') is not None else None
+                delta = float(md.get('delta', 0)) if md.get('delta') is not None else None
+                theta = float(md.get('theta', 0)) if md.get('theta') is not None else None
+                gamma = float(md.get('gamma', 0)) if md.get('gamma') is not None else None
+                vega = float(md.get('vega', 0)) if md.get('vega') is not None else None
+                r = float(md.get('riskFreeInterest', 0)) if md.get('riskFreeInterest') is not None else 0.0
+
+                if u_sym in ['ETH', 'BTC', 'BNB', 'SOL']:
+                    contract_unit = 1
+                elif u_sym in ['XRP']:
+                    contract_unit = 100
+                elif u_sym in ['DOG']:
+                    contract_unit = 1000
+                else:
+                    contract_unit = 1
+
+                bs_price, itm_p = BlackScholes(r, exercise_price, strike_price, T, mark_iv or 0.0, tipo=contract_type)
+                trading_fee = min(fee_rate * exercise_price * contract_unit, last_price * option_size) * option_size
+
+                # Success probability per notebook
+                try:
+                    trading_cost = last_price + 2 * trading_fee
+                    St = exercise_price * np.exp((r + (mark_iv or 0.0)**2 / 2) * T)
+                    if contract_type == 'C':
+                        expected_relative_return = np.log(St / (strike_price + trading_cost))
+                    else:
+                        expected_relative_return = np.log(strike_price / (St + trading_cost))
+                    z = expected_relative_return / ((mark_iv or 1e-9) * np.sqrt(T)) - ((mark_iv or 0.0) * np.sqrt(T))
+                    success_prob = float(norm.cdf(z))
+                except Exception:
+                    success_prob = 0.0
+
+                options.append(OptionData(
+                    symbol=sym,
+                    underlying=underlying,
+                    strike=strike_price,
+                    expiry=expiry_dt,
+                    option_type=contract_type,
+                    price=last_price,
+                    bid=bid_price,
+                    ask=ask_price,
+                    volume=volume,
+                    implied_volatility=mark_iv,
+                    timestamp=now_ts,
+                    source="binance",
+                    mark_price=mark_price,
+                    bid_iv=bid_iv,
+                    ask_iv=ask_iv,
+                    mark_iv=mark_iv,
+                    delta=delta,
+                    theta=theta,
+                    gamma=gamma,
+                    vega=vega,
+                    risk_free_interest=r,
+                    exercise_price=exercise_price,
+                    contract_unit=contract_unit,
+                    bs_price=bs_price,
+                    itm_probability=itm_p,
+                    trading_fee=float(trading_fee),
+                    success_probability=success_prob
+                ))
+
             self.logger.info(f"Retrieved {len(options)} options for {underlying}")
             return options
             
@@ -503,12 +594,11 @@ class ModelEngine:
                 if time_to_expiry <= 0:
                     continue  # Skip expired options
                 
-                # Use implied volatility if available, otherwise default
-                volatility = option.implied_volatility or default_volatility
-                
-                # Calculate Black-Scholes theoretical price
-                theoretical_price = BlackScholes(
-                    risk_free_rate, underlying_price, option.strike, 
+                # Prefer mark_iv/exercise_price when present
+                volatility = (getattr(option, 'mark_iv', None) or option.implied_volatility or default_volatility)
+                S_for_bs = getattr(option, 'exercise_price', None) or underlying_price
+                theoretical_price, itm_p = BlackScholes(
+                    risk_free_rate, S_for_bs, option.strike, 
                     time_to_expiry, volatility, option.option_type
                 )
                 
@@ -518,13 +608,14 @@ class ModelEngine:
                     result=theoretical_price,
                     confidence=0.85,  # Static confidence for BS model
                     parameters={
-                        'underlying_price': underlying_price,
+                        'underlying_price': S_for_bs,
                         'strike': option.strike,
                         'time_to_expiry': time_to_expiry,
                         'risk_free_rate': risk_free_rate,
                         'volatility': volatility,
                         'option_type': option.option_type,
-                        'market_price': option.price
+                        'market_price': option.price,
+                        'itm_probability': itm_p
                     }
                 )
                 results.append(result)
