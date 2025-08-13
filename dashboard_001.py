@@ -41,45 +41,34 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Black-Scholes Model (from original code)
 from scipy.stats import norm
 
 
-def BlackScholes(
+def BlackScholes_notebook(
     r: float, S: float, K: float, T: float, sigma: float, tipo: str = "C"
-) -> float:
-    """
-    Black-Scholes option pricing model
-    r : Interest Rate
-    S : Spot Price
-    K : Strike Price
-    T : Time to expiration in years
-    sigma : Annualized Volatility
-    tipo : 'C' for Call, 'P' for Put
-    """
+) -> Dict[str, float]:
+    """Notebook-style BS: returns both theoretical price and ITM probability."""
     try:
         if T <= 0:
-            return max(0, S - K) if tipo == "C" else max(0, K - S)
+            precio = max(0, S - K) if tipo == "C" else max(0, K - S)
+            itm_p = 1.0 if (tipo == "C" and S > K) or (tipo == "P" and K > S) else 0.0
+            return {"price": float(precio), "itm_probability": float(itm_p)}
 
         d1 = (np.log(S / K) + (r + sigma**2 / 2) * T) / (sigma * np.sqrt(T))
         d2 = d1 - sigma * np.sqrt(T)
 
         if tipo == "C":
-            precio = S * norm.cdf(d1, 0, 1) - K * np.exp(-r * T) * norm.cdf(
-                d2, 0, 1
-            )
-        elif tipo == "P":
-            precio = K * np.exp(-r * T) * norm.cdf(
-                -d2, 0, 1
-            ) - S * norm.cdf(-d1, 0, 1)
+            precio = S * norm.cdf(d1, 0, 1) - K * np.exp(-r * T) * norm.cdf(d2, 0, 1)
+            itm_p = norm.cdf(d2)
         else:
-            raise ValueError("Option type must be 'C' or 'P'")
+            precio = K * np.exp(-r * T) * norm.cdf(-d2, 0, 1) - S * norm.cdf(-d1, 0, 1)
+            itm_p = norm.cdf(-d2)
 
-        return max(0, precio)
+        return {"price": float(max(0, precio)), "itm_probability": float(itm_p)}
     except Exception as e:
         logging.error(f"Black-Scholes calculation error: {e}", exc_info=True)
         st.error(f"Black-Scholes calculation error: {e}")
-        return 0.0
+        return {"price": 0.0, "itm_probability": 0.0}
 
 
 def HeatMapMatrix(
@@ -90,10 +79,10 @@ def HeatMapMatrix(
     T = Days_to_Exp / 365
     for i in range(len(Spot_Prices)):
         for j in range(len(Volatilities)):
-            BS_result = BlackScholes(
+            BS_result = BlackScholes_notebook(
                 Interest_Rate, Spot_Prices[i], Strike, T, Volatilities[j], type
             )
-            M[i, j] = round(BS_result, 2)
+            M[i, j] = round(BS_result.get("price", 0.0), 2)
     return M
 
 
@@ -520,80 +509,49 @@ class DashboardCommunicator:
 
 
 # P&L Probability Calculator
-class PLProbabilityCalculator:
-    """Calculate positive P&L probability for options"""
+class SuccessProbability:
+    """Notebook-style success probability (closed-form) with trading fees."""
 
     @staticmethod
-    def calculate_positive_pl_probability(
+    def compute(
         option_type: str,
         strike: float,
-        current_price: float,
-        time_to_expiry: float,
+        exercise_price: float,
+        time_to_expiry_days: float,
         volatility: float,
         risk_free_rate: float,
-        option_purchase_price: float,
-        transaction_cost: float = 0.0,
-        num_simulations: int = 10000,
+        last_price: float,
+        trading_fee: float,
     ) -> Dict[str, float]:
-        """
-        Calculate the probability of positive P&L using Monte Carlo simulation
-        """
         try:
-            if time_to_expiry <= 0:
-                return {
-                    "positive_pl_probability": 0.0,
-                    "breakeven_price": strike + option_purchase_price
-                    if option_type == "C"
-                    else strike - option_purchase_price,
-                    "expected_pl": -option_purchase_price - transaction_cost,
-                    "max_loss": option_purchase_price + transaction_cost,
-                }
+            if time_to_expiry_days <= 0:
+                trading_cost = last_price + 2 * trading_fee
+                breakeven = (
+                    strike + last_price + 2 * trading_fee
+                    if option_type.upper() == "C"
+                    else strike - last_price - 2 * trading_fee
+                )
+                return {"success_probability": 0.0, "breakeven": breakeven}
 
-            dt = time_to_expiry / 365
-
-            # Generate random price paths using geometric Brownian motion
-            Z = np.random.normal(0, 1, num_simulations)
-            final_prices = current_price * np.exp(
-                (risk_free_rate - 0.5 * volatility**2) * dt
-                + volatility * np.sqrt(dt) * Z
-            )
-
-            # Calculate option values at expiration
+            T = time_to_expiry_days / 365.0
+            trading_cost = last_price + 2 * trading_fee
+            St = exercise_price * np.exp((risk_free_rate + volatility**2 / 2) * T)
             if option_type.upper() == "C":
-                option_values = np.maximum(final_prices - strike, 0)
-                breakeven = strike + option_purchase_price + transaction_cost
-            else:  # Put
-                option_values = np.maximum(strike - final_prices, 0)
-                breakeven = strike - option_purchase_price - transaction_cost
-
-            # Calculate P&L
-            pl_values = option_values - option_purchase_price - transaction_cost
-
-            # Calculate statistics
-            positive_pl_count = np.sum(pl_values > 0)
-            positive_pl_probability = positive_pl_count / num_simulations
-            expected_pl = np.mean(pl_values)
-            max_loss = option_purchase_price + transaction_cost
-
-            return {
-                "positive_pl_probability": positive_pl_probability,
-                "breakeven_price": breakeven,
-                "expected_pl": expected_pl,
-                "max_loss": max_loss,
-                "simulated_pl_values": pl_values,
-            }
-
-        except Exception as e:
-            logging.error(
-                f"Error calculating P&L probability: {e}", exc_info=True
+                expected_relative_return = np.log(St / (strike + trading_cost))
+            else:
+                expected_relative_return = np.log(strike / (St + trading_cost))
+            z = expected_relative_return / (volatility * np.sqrt(T)) - (volatility * np.sqrt(T))
+            success_prob = float(norm.cdf(z))
+            breakeven = (
+                strike + last_price + 2 * trading_fee
+                if option_type.upper() == "C"
+                else strike - last_price - 2 * trading_fee
             )
-            st.error(f"Error calculating P&L probability: {e}")
-            return {
-                "positive_pl_probability": 0.0,
-                "breakeven_price": 0.0,
-                "expected_pl": 0.0,
-                "max_loss": 0.0,
-            }
+            return {"success_probability": success_prob, "breakeven": breakeven}
+        except Exception as e:
+            logging.error(f"Error calculating success probability: {e}", exc_info=True)
+            st.error(f"Error calculating success probability: {e}")
+            return {"success_probability": 0.0, "breakeven": 0.0}
 
 
 # Dashboard Pages
@@ -722,16 +680,16 @@ def show_options_analysis():
             df = pd.DataFrame(options_data)
 
             if not df.empty:
-                # Get current underlying price (you might want to fetch this from your market data)
+                # User-provided current underlying price, used as exercise_price in notebook
                 underlying_price = st.number_input(
                     f"Current {ticker_input.upper()} Price:",
-                    value=45000.0,  # Default value
+                    value=45000.0,
                     min_value=0.0,
                     key="underlying_price",
                 )
 
                 # Risk parameters
-                col1, col2, col3 = st.columns(3)
+                col1, col2 = st.columns(2)
                 with col1:
                     risk_free_rate = st.number_input(
                         "Risk-free Rate",
@@ -748,68 +706,96 @@ def show_options_analysis():
                         max_value=5.0,
                         format="%.4f",
                     )
-                with col3:
-                    transaction_cost = st.number_input(
-                        "Transaction Cost", value=10.0, min_value=0.0
-                    )
 
-                # Calculate P&L probabilities
-                calculator = PLProbabilityCalculator()
-
+                fR = 0.0003
+                option_size = 1
                 enhanced_data = []
                 for _, row in df.iterrows():
                     try:
-                        # Parse expiry date
+                        # Parse expiry and time delta (days)
                         if "expiry" in row and row["expiry"]:
                             expiry_date = pd.to_datetime(row["expiry"])
-                            time_to_expiry = (
+                            time_to_expiry_days = (
                                 expiry_date - datetime.now(timezone.utc)
                             ).days
                         else:
-                            time_to_expiry = 30  # Default to 30 days
+                            time_to_expiry_days = 30
 
-                        # Use implied volatility if available, otherwise default
-                        volatility = (
-                            row.get("implied_volatility", default_volatility)
-                            or default_volatility
-                        )
+                        market_price = row.get("price") or row.get("lastPrice") or 0.0
 
-                        # Calculate theoretical Black-Scholes price
-                        bs_price = BlackScholes(
-                            risk_free_rate,
-                            underlying_price,
-                            row["strike"],
-                            time_to_expiry / 365,
-                            volatility,
-                            row["option_type"],
-                        )
+                        # Prefer backend-computed fields; fallback to local notebook formulas
+                        bs_price = row.get("bs_price")
+                        itm_probability = row.get("itm_probability")
+                        success_probability = row.get("success_probability")
+                        # Compute trading fee per notebook using underlying_price as exercise_price
+                        # Contract unit mapping by symbol prefix
+                        try:
+                            underlying_symbol = str(row.get("symbol", "")).split('-')[0]
+                            if underlying_symbol in ["ETH", "BTC", "BNB", "SOL"]:
+                                contract_unit = 1
+                            elif underlying_symbol in ["XRP"]:
+                                contract_unit = 100
+                            elif underlying_symbol in ["DOG"]:
+                                contract_unit = 1000
+                            else:
+                                contract_unit = 1
+                        except Exception:
+                            contract_unit = 1
+                        trading_fee = min(fR * float(underlying_price) * contract_unit, float(market_price) * option_size) * option_size
 
-                        # Use market price if available, otherwise BS price
-                        market_price = row.get("price", bs_price) or bs_price
+                        if bs_price is None or itm_probability is None:
+                            rfr = row.get("risk_free_interest", risk_free_rate)
+                            ex_price = float(underlying_price)
+                            vol = row.get("mark_iv") or row.get("implied_volatility") or default_volatility
+                            bs = BlackScholes_notebook(
+                                r=rfr,
+                                S=float(ex_price),
+                                K=float(row.get("strike", 0.0)),
+                                T=float(time_to_expiry_days) / 365.0,
+                                sigma=float(vol),
+                                tipo=str(row.get("option_type", "C")),
+                            )
+                            bs_price = bs.get("price", 0.0)
+                            itm_probability = bs.get("itm_probability", 0.0)
 
-                        # Calculate P&L probability
-                        pl_stats = calculator.calculate_positive_pl_probability(
-                            option_type=row["option_type"],
-                            strike=row["strike"],
-                            current_price=underlying_price,
-                            time_to_expiry=time_to_expiry,
-                            volatility=volatility,
-                            risk_free_rate=risk_free_rate,
-                            option_purchase_price=market_price,
-                            transaction_cost=transaction_cost,
-                        )
+                        # Success probability and breakeven
+                        if success_probability is None:
+                            rfr = row.get("risk_free_interest", risk_free_rate)
+                            ex_price = float(underlying_price)
+                            vol = row.get("mark_iv") or row.get("implied_volatility") or default_volatility
+                            tfee = trading_fee if trading_fee is not None else 0.0
+                            sp = SuccessProbability.compute(
+                                option_type=str(row.get("option_type", "C")),
+                                strike=float(row.get("strike", 0.0)),
+                                exercise_price=float(ex_price),
+                                time_to_expiry_days=float(time_to_expiry_days),
+                                volatility=float(vol),
+                                risk_free_rate=float(rfr),
+                                last_price=float(market_price),
+                                trading_fee=float(tfee),
+                            )
+                            success_probability = sp.get("success_probability", 0.0)
+                            breakeven = sp.get("breakeven", 0.0)
+                        else:
+                            # If we already have success_probability, derive breakeven using notebook formula
+                            tfee = trading_fee if trading_fee is not None else 0.0
+                            if str(row.get("option_type", "C")).upper() == "C":
+                                breakeven = float(row.get("strike", 0.0)) + float(market_price) + 2 * float(tfee)
+                            else:
+                                breakeven = float(row.get("strike", 0.0)) - float(market_price) - 2 * float(tfee)
 
-                        # Simplified enhanced row with only key metrics
+                        # Enhanced row
                         enhanced_row = {
                             "Symbol": row["symbol"],
                             "Type": row["option_type"],
                             "Strike": row["strike"],
                             "Market Price": market_price,
                             "BS Price": bs_price,
-                            "Days to Expiry": time_to_expiry,
-                            "Volatility": volatility,
-                            "P&L Probability": pl_stats['positive_pl_probability'],
-                            "Breakeven": pl_stats['breakeven_price'],
+                            "Days to Expiry": time_to_expiry_days,
+                            "Volatility": row.get("mark_iv") or row.get("implied_volatility", 0.0),
+                            "ITM Probability": itm_probability,
+                            "P&L Probability": success_probability,
+                            "Breakeven": breakeven,
                             "Volume": row.get("volume", 0),
                             "Bid": row.get("bid", 0),
                             "Ask": row.get("ask", 0),
@@ -891,11 +877,7 @@ def show_options_analysis():
 
                     # Display the styled dataframe
                     if len(filtered_df) > 0:
-                        st.dataframe(
-                            style_dataframe(filtered_df),
-                            use_container_width=True,
-                            height=400,
-                        )
+                        st.dataframe(style_dataframe(filtered_df), use_container_width=True, height=400)
 
                         # Charts
                         col1, col2 = st.columns(2)
@@ -935,9 +917,7 @@ def show_options_analysis():
             else:
                 st.warning("No options data found in the database")
         else:
-            st.info(
-                f"No options data found for {ticker_input}. Please request data using the button above."
-            )
+            st.info(f"No options data found for {ticker_input}. Please request data using the button above.")
 
 
 def show_black_scholes_heatmap():
@@ -978,14 +958,15 @@ def show_black_scholes_heatmap():
     Volatilities_space = np.linspace(min_vol, max_vol, grid_size)
 
     # Calculate option prices
-    call_price = BlackScholes(
+    call_bs = BlackScholes_notebook(
         Risk_Free_Rate,
         Underlying_price,
         SelectedStrike,
         days_to_maturity / 365,
         volatility,
+        "C",
     )
-    put_price = BlackScholes(
+    put_bs = BlackScholes_notebook(
         Risk_Free_Rate,
         Underlying_price,
         SelectedStrike,
@@ -993,6 +974,8 @@ def show_black_scholes_heatmap():
         volatility,
         "P",
     )
+    call_price = call_bs.get("price", 0.0)
+    put_price = put_bs.get("price", 0.0)
 
     col1, col2 = st.columns(2)
     with col1:
